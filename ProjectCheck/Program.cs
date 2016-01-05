@@ -16,13 +16,13 @@ namespace ProjectCheck
 
         public static void CheckCsprites()
         {
-            DirectoryInfo dir = new DirectoryInfo(@"E:\x1\trunk\config\mobileclient\assets\ui\csprite");
+            DirectoryInfo dir = new DirectoryInfo(@"E:\csprite");
             var files = dir.GetFiles("*.csprite", SearchOption.AllDirectories);
 
             foreach (var file in files)
             {
-
-
+                CSprite csprite = new CSprite(file);
+                csprite.ExportImages();
             }
 
             Console.WriteLine(files.Length);

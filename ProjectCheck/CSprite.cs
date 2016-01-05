@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
@@ -12,58 +13,168 @@ namespace ProjectCheck
 {
     class CSprite
     {
-        private string path = null;
+        private FileInfo _file = null;
 
         private SubentFileHead file_head = new SubentFileHead ();
 
-        public CSprite(string path)
+        private List<FileRefSpriteInfo> file_ref_sprite_info_list = null;
+
+        private List<FileEmbedRefSpriteInfo> file_embed_ref_sprite_info_list = null;
+
+        private List<FileEmbedSpriteInfo> file_embed_sprite_info_list = null;
+
+        private List<FileEmbedFrameInfo> file_embed_frame_info_list = null;
+
+        private List<FileEmbedImageInfo> file_embed_image_info_list = null;
+
+        private List<FileSegInfo> file_seg_info_list = null;
+
+
+        public CSprite(FileInfo file)
         {
-            this.path = path;
-            Init();
+            this._file = file;
+            this.Init();
         }
 
         private void Init()
         {
-            FileInfo file = new FileInfo(this.path);
-            using (FileStream fs = file.OpenRead())
+            using (FileStream fs = this._file.OpenRead())
             {
                 using (BinaryReader br = new BinaryReader(fs))
                 {
                     byte[] file_head_bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(SubentFileHead)));
                     file_head = (SubentFileHead)StructOperateHelper.BytesToStruct(file_head_bytes, typeof(SubentFileHead));
-                    Console.ReadLine();
-                }
-            }
-        }
 
-        private void ExportImages()
-        {
-            FileInfo file = new FileInfo(this.path);
-            using (FileStream fs = file.OpenRead())
-            {
-                using (BinaryReader br = new BinaryReader(fs))
-                {
-
+                    // 精灵信息
                     br.BaseStream.Seek(file_head.embeded_sprite_res_offset, SeekOrigin.Begin);
-                    byte[] embed_sprite_res = new byte[file_head.embeded_sprite_res_datalen];
+                    this.file_embed_sprite_info_list = new List<FileEmbedSpriteInfo>();
+                    for (int i = 0; i < file_head.total_embed_sprite; ++i)
+                    {
+                        byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileEmbedSpriteInfo)));
+                        FileEmbedSpriteInfo fesi = (FileEmbedSpriteInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileEmbedSpriteInfo));
+                        this.file_embed_sprite_info_list.Add(fesi);
+                    }
 
+                    // 动画帧信息
                     br.BaseStream.Seek(file_head.embeded_frame_res_offset, SeekOrigin.Begin);
-                    byte[] embed_frame_res = new byte[file_head.embeded_frame_res_datalen];
+                    this.file_embed_frame_info_list = new List<FileEmbedFrameInfo>();
 
+                    for(int i = 0; i < file_head.total_embed_sprite; ++i)
+                    {
+                        for(int j = 0; j < this.file_embed_sprite_info_list[i].total_frame; ++j)
+                        {
+                            byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileEmbedFrameInfo)));
+                            FileEmbedFrameInfo fefi = (FileEmbedFrameInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileEmbedFrameInfo));
+                            this.file_embed_frame_info_list.Add(fefi);
+                        }
+                    }
+                    
+                    // 内部引用精灵信息
                     br.BaseStream.Seek(file_head.embeded_ref_sprite_res_offset, SeekOrigin.Begin);
-                    byte[] embed_ref_sprite_res = new byte[file_head.embeded_ref_sprite_res_datalen];
+                    this.file_embed_ref_sprite_info_list = new List<FileEmbedRefSpriteInfo>();
+                    for (int i = 0; i < file_head.total_embed_ref_sprite; ++i)
+                    {
+                        byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileEmbedRefSpriteInfo)));
+                        FileEmbedRefSpriteInfo fersi = (FileEmbedRefSpriteInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileEmbedRefSpriteInfo));
+                        this.file_embed_ref_sprite_info_list.Add(fersi);
+                    }
 
+                    // 引用精灵信息
                     br.BaseStream.Seek(file_head.ref_sprite_res_offset, SeekOrigin.Begin);
-                    byte[] ref_sprite_res = new byte[file_head.ref_sprite_res_datalen];
+                    this.file_ref_sprite_info_list = new List<FileRefSpriteInfo>();
+                    for(int i = 0; i < file_head.total_ref_sprite; ++i)
+                    {
+                        byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileRefSpriteInfo)));
+                        FileRefSpriteInfo frsi = (FileRefSpriteInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileRefSpriteInfo));
+                        this.file_ref_sprite_info_list.Add(frsi);
+                    }
 
+                    // 图片信息
                     br.BaseStream.Seek(file_head.embed_img_info_offset, SeekOrigin.Begin);
-                    byte[] embed_img_info = new byte[file_head.embed_img_info_datalen];
+                    this.file_embed_image_info_list = new List<FileEmbedImageInfo>();
+                    for (int i = 0; i < file_head.total_embed_image; ++i)
+                    {
+                        byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileEmbedImageInfo)));
+                        FileEmbedImageInfo feii = (FileEmbedImageInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileEmbedImageInfo));
+                        this.file_embed_image_info_list.Add(feii);
+                    }
 
+                    // 图片数据
                     br.BaseStream.Seek(file_head.embed_img_data_offset, SeekOrigin.Begin);
                     byte[] embed_img_data = new byte[file_head.embed_img_data_datalen];
+
+                    if(this.file_head.use_mode == 1)
+                    {
+                        br.BaseStream.Seek(file_head.segment_img_data_offset, SeekOrigin.Begin);
+                        this.file_seg_info_list = new List<FileSegInfo>();
+                        for (int i = 0; i < file_head.segment_total_count; ++i)
+                        {
+                            byte[] bytes = br.ReadBytes(StructOperateHelper.GetStructSize(typeof(FileSegInfo)));
+                            FileSegInfo fsi = (FileSegInfo)StructOperateHelper.BytesToStruct(bytes, typeof(FileSegInfo));
+                            this.file_seg_info_list.Add(fsi);
+                        }
+                    }
                 }
             }
         }
+
+        public void ExportImages()
+        {
+            using (FileStream fs = this._file.OpenRead())
+            {
+                List<Image> imgs = new List<Image>();
+
+                List<Image> alphas = new List<Image>();
+                using (BinaryReader br = new BinaryReader(fs))
+                {
+                    for(int i = 0; i < this.file_head.total_embed_image; ++i)
+                    {
+                        br.BaseStream.Seek(this.file_head.embed_img_data_offset + this.file_embed_image_info_list[i].img_data_offset, SeekOrigin.Begin);
+                        byte[] bytes = br.ReadBytes((int)this.file_embed_image_info_list[i].img_data_size);
+                        Stream stream = new MemoryStream(bytes);
+                        Image img = Bitmap.FromStream(stream);
+                        imgs.Add(img);
+
+                        //br.BaseStream.Seek(this.file_head.embed_img_data_offset + this.file_embed_image_info_list[i].img_alpha_offset, SeekOrigin.Begin);
+                        //byte[] alpha_bytes = br.ReadBytes((int)this.file_embed_image_info_list[i].img_alpha_size);
+                        //Stream alpha_stream = new MemoryStream(alpha_bytes);
+                        //Image alpha = Bitmap.FromStream(alpha_stream);
+                        //alphas.Add(alpha);
+                    }
+                }
+
+
+                int frame = 0;
+                for( int i = 0; i < this.file_head.total_embed_sprite; ++i)
+                {
+                    FileEmbedSpriteInfo fesi = this.file_embed_sprite_info_list[i];
+                    for(int j = 0; j < fesi.total_frame; ++j)
+                    {
+                        FileEmbedFrameInfo fefi = this.file_embed_frame_info_list[frame];
+                        frame += 1;
+                        var img = imgs[fefi.embed_image_id];
+
+                        // var alpah_img = alphas[fefi.embed_image_id];
+
+                        Bitmap bmp = new Bitmap(fefi.source_size_width, fefi.source_size_height, PixelFormat.Format32bppArgb);
+                        Graphics g = Graphics.FromImage(bmp);
+
+                        Rectangle alpha_section = new Rectangle((int)(img.Width * fefi.uv_left), (int)(img.Height * fefi.uv_top), fefi.source_color_width, fefi.source_color_height);
+                        g.DrawImage(img, fefi.source_color_x, fefi.source_color_y, alpha_section, GraphicsUnit.Pixel);
+                        
+                        // Rectangle section = new Rectangle((int)(img.Width * fefi.uv_left), (int)(img.Height * fefi.uv_top), fefi.source_color_width, fefi.source_color_height);
+                        // g.DrawImage(alpah_img, fefi.source_color_x, fefi.source_color_y, section, GraphicsUnit.Pixel);
+
+                        string directory_name = @"E:\test2\" + this._file.Name.Replace("_x1.csprite", "");
+                        DirectoryInfo dir = new DirectoryInfo(directory_name);
+                        if (!dir.Exists) dir.Create();
+                        string path = directory_name + @"\" + fesi.anim_name + ".png";
+                        bmp.Save(path, ImageFormat.Png);
+                    }
+                }
+            }
+        }
+
     }
 
     [StructLayoutAttribute(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
